@@ -50,4 +50,4 @@ class IsUserAdmin(BaseFilter):
 
 class IsChoosePerson(BaseFilter):
     async def __call__(self, callback: CallbackQuery) -> bool:
-        return callback.data == '10'
+        return callback.data == '99'

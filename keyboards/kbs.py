@@ -2,7 +2,6 @@ from aiogram.types import InlineKeyboardButton, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from lexicon.lexicon import LEXICON, Links
-from db.mysql_db import load_db
 
 
 def create_ask_phone():
@@ -13,15 +12,13 @@ def create_ask_phone():
     return kb_builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def category_menu(btns, db_con):
+def category_menu(btns):
     kb_builder = InlineKeyboardBuilder()
-    db = load_db(db_con)
 
     for button in btns:
         kb_builder.row(InlineKeyboardButton(
-            # text=LEXICON.get(button),
-            text=db.get_category(button)[0],
-            callback_data=str(button)
+            text=button[1],
+            callback_data=str(button[0])
         ))
 
     return kb_builder.as_markup()

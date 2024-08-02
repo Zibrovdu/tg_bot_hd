@@ -8,11 +8,12 @@ from aiogram.fsm.state import default_state
 from aiogram.types import Message, FSInputFile, CallbackQuery, ReplyKeyboardRemove
 
 from db.mysql_db import load_db
-from external_services.bitrix import id_by_phone, set_bitrix_task, id_by_tg, get_user_name, user_check
+from external_services.bitrix import (id_by_phone, set_bitrix_task, id_by_tg, get_user_name, user_check,
+                                      search_user_by_phone)
 from filters.filters import (IsChoseCat, IsPressedBackBtn, IsEditMessage, IsSetTask, IsCancelTask, IsUserHappy,
                              IsUserUnHappy, IsUserContact, IsChoosePerson)
 from keyboards.kbs import create_ask_phone, category_menu, other_menu, link_buttons
-from lexicon.lexicon import LEXICON, msg_menu, ynbtns, additions
+from lexicon.lexicon import LEXICON, msg_menu, ynbtns, additions, service, srv_cats
 from states.states import FSMFillForm
 
 router = Router()
@@ -58,9 +59,11 @@ async def start(message: Message, db_conn, state: FSMContext, bitrix_conn):
                 text=LEXICON.get('hello_user').format(b_user_name, b_user_last_name),
                 reply_markup=ReplyKeyboardRemove()
             )
-            cat_ids = [i[0] for i in db.get_categories_ids('tech_sup')]
+            cat_ids = [i for i in db.get_cats('tech_sup')]
+            cat_ids = service(cat_ids)
+
             msg = await message.answer(text=LEXICON.get('choose_cat'),
-                                       reply_markup=category_menu(cat_ids, db_con=db_conn))
+                                       reply_markup=category_menu(cat_ids))
             await state.update_data(msg_id=msg.message_id)
             await state.set_state(FSMFillForm.fill_cat)
     else:
@@ -101,17 +104,28 @@ async def process_cancel_command_state(message: Message, state: FSMContext, bot:
 
 # Пользователь отправил боту свой номер телефона
 @router.message(F.contact, StateFilter(FSMFillForm.fill_phone), IsUserContact())
-async def user_entering_phone(message: Message, db_conn, state: FSMContext, bitrix_conn):
+async def user_entering_phone(message: Message, db_conn, state: FSMContext, bitrix_conn, url_hook):
     db = load_db(db_conn)
+    photo_profile = FSInputFile('assets/profile_wo_phone.jpg', 'profile_wo_phone.jpg')
     logger.info('User send his contact')
 
     db.save_phone(user_id=message.from_user.id, phone=int(message.contact.phone_number))
 
     # Получаем ид пользователя в Битрикс по номеру телефона
     bitrix_user_id, bitrix_user_last_name, bitrix_user_name = id_by_phone(bitrix_conn, message.contact.phone_number)
-    if bitrix_user_id != 0:
+
+    if bitrix_user_id == 0:
+        _, bitrix_user_id, bitrix_user_last_name, bitrix_user_name = search_user_by_phone(message.contact.phone_number,
+                                                                                          url_hook)
+
+    if bitrix_user_id == 9999999:
+        await message.answer(text=LEXICON.get('too_many_users'), reply_markup=ReplyKeyboardRemove())
+        await message.answer_photo(photo_profile)
+        await state.clear()
+
+    elif bitrix_user_id != 0:
+
         # Пользователь найден
-        logger.info(f'User found, bitrix user id: {bitrix_user_id}')
         db.save_bitrix_data(
             user_id=message.from_user.id,
             b_uid=int(bitrix_user_id),
@@ -127,16 +141,14 @@ async def user_entering_phone(message: Message, db_conn, state: FSMContext, bitr
                 text=LEXICON.get('hello_user').format(bitrix_user_name, bitrix_user_last_name),
                 reply_markup=ReplyKeyboardRemove()
             )
-            cat_ids = [i[0] for i in db.get_categories_ids('tech_sup')]
+            cat_ids = [i for i in db.get_cats('tech_sup')]
+            cat_ids = service(cat_ids)
             msg = await message.answer(text=LEXICON.get('choose_cat'),
-                                       reply_markup=category_menu(cat_ids, db_con=db_conn))
+                                       reply_markup=category_menu(cat_ids))
             await state.update_data(msg_id=msg.message_id)
             await state.set_state(FSMFillForm.fill_cat)
     else:
         # Пользователь не найден
-        logger.info(f'User not found. User phone number: {message.contact.phone_number}')
-        photo_profile = FSInputFile('assets/profile_wo_phone.jpg', 'profile_wo_phone.jpg')
-
         await message.answer(text=LEXICON.get('no_user'), reply_markup=ReplyKeyboardRemove())
         await message.answer_photo(photo_profile)
         await state.clear()
@@ -175,31 +187,34 @@ async def choose_person(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
 @router.callback_query(StateFilter(FSMFillForm.fill_cat), IsChoseCat())
 async def choose_category(callback: CallbackQuery, db_conn, state: FSMContext, bot: Bot):
-
     db = load_db(db_conn)
 
     db.store_cat_id(user_id=callback.from_user.id, category_id=int(callback.data[-2:]))
     cat_list = db.get_category(category_id=int(callback.data[-2:]))
 
+    if callback.data == '98':
+        cat_list = srv_cats[0][1:]
+
     if not cat_list:
         return await callback.message.answer(text='Get error when read category from DB')
+    # cat_id = db.get_cat_id(callback.from_user.id)
+    sla = db.get_sla(db.get_cat_id(callback.from_user.id))
 
     add_text = ''
     if additions.get(''.join(['tech_sup_', callback.data])):
         add_text = LEXICON.get('hint')
         for item in additions.get(''.join(['tech_sup_', callback.data])):
-            add_text = '\n'.join([add_text, item])
+            add_text = '\n\n'.join([add_text, item])
 
-    msg_text = '\n\n'.join([LEXICON.get('choosen_cat').format(cat_list[0]), cat_list[1], add_text, LEXICON.get('write_msg')])
+    msg = [
+        LEXICON.get('choosen_cat').format(cat_list[0]),
+        cat_list[1],
+        LEXICON.get('write_msg')
+    ]
+    if add_text:
+        msg.insert(2, add_text)
 
-    # await callback.message.edit_text(text=LEXICON.get('choosen_cat').format(cat_list[0]))
-    # await callback.message.edit_text(text=msg_text)
-    # await callback.message.answer(text=cat_list[1])
-
-    # if additions.get(str(callback.data)):
-    #     await callback.message.answer(text=LEXICON.get('hint'))
-    #     for item in additions.get(str(callback.data)):
-    #         await callback.message.answer(text=item)
+    msg_text = '\n\n'.join(msg)
 
     msg_data = await state.get_data()
     if msg_data:
@@ -214,12 +229,13 @@ async def choose_category(callback: CallbackQuery, db_conn, state: FSMContext, b
 async def back_to_choose_cat_menu(callback: CallbackQuery, state: FSMContext, db_conn, bot: Bot):
     await callback.answer()
     db = load_db(db_conn)
-    cat_ids = [i[0] for i in db.get_categories_ids('tech_sup')]
+    cat_ids = [i for i in db.get_cats('tech_sup')]
+    cat_ids = service(cat_ids)
 
     msg_data = await state.get_data()
 
     if msg_data:
-        await bot.edit_message_text(text=LEXICON.get('choose_cat'), reply_markup=category_menu(cat_ids, db_con=db_conn),
+        await bot.edit_message_text(text=LEXICON.get('choose_cat'), reply_markup=category_menu(cat_ids),
                                     message_id=msg_data['msg_id'], chat_id=callback.message.chat.id)
 
     await state.set_state(FSMFillForm.fill_cat)
@@ -280,7 +296,8 @@ async def set_task(callback: CallbackQuery, db_conn, state: FSMContext, url_hook
         group_id=group_id,
         msg=LEXICON.get('set_b_task').format(msg_text, " ".join(user), phone[0]),
         title=db.get_category(db.get_user_cat(callback.from_user.id))[0],
-        chat_id=callback.message.chat.id
+        chat_id=callback.message.chat.id,
+        sla=db.get_sla(db.get_cat_id(callback.from_user.id))
     )
     await state.clear()
 

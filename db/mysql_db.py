@@ -67,8 +67,7 @@ class MySqlDb:
     def save_bitrix_data(self, user_id: int, b_uid: int, b_user_name: str, b_user_last_name: str):
         self.database_client.execute_command(
             Queries.store_b_data,
-            (b_uid, b_user_name, b_user_last_name, user_id)
-        )
+            (b_uid, b_user_name, b_user_last_name, user_id))
 
     def store_cat_id(self, user_id: int, category_id: int):
         self.database_client.execute_command(Queries.store_cat_id, (category_id, user_id))
@@ -99,14 +98,12 @@ class MySqlDb:
     def log_tasks(self, user_id: int, bitrix_id: int, task_id: int, task_date):
         self.database_client.execute_command(
             Queries.log_tasks,
-            (user_id, bitrix_id, task_id, task_date)
-        )
+            (user_id, bitrix_id, task_id, task_date))
 
     def set_vote_user(self, user_id: int, vote: str, vote_date, bitrix_id: int, comment: str):
         self.database_client.execute_command(
             Queries.get_vote,
-            (user_id, vote, vote_date, bitrix_id, comment)
-        )
+            (user_id, vote, vote_date, bitrix_id, comment))
 
     def get_user_cat(self, user_id: int):
         cat_info = self.database_client.execute_select_command(Queries.get_user_cat, (user_id,))
@@ -126,6 +123,18 @@ class MySqlDb:
     def get_categories_ids(self, cat_type: str):
         cat_ids = self.database_client.execute_select_command(Queries.get_cats_isd, (cat_type,))
         return cat_ids
+
+    def get_cats(self, cat_type: str):
+        cats = self.database_client.execute_select_command(Queries.get_cats, (cat_type,))
+        return cats
+
+    def get_sla(self, cat_id: int):
+        sla = self.database_client.execute_select_command(Queries.get_sla, (cat_id, ))
+        return sla[0][0] if sla else 8
+
+    def get_cat_id(self, user_id: int):
+        cat_id = self.database_client.execute_select_command(Queries.get_cat_id, (user_id,))
+        return cat_id[0][0]
 
 
 class BitrixDb:

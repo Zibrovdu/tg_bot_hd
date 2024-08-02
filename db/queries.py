@@ -43,6 +43,10 @@ class Queries:
 
     get_cats_isd: str = """SELECT c.id FROM categories c WHERE c.cat_type = %s OR c.cat_type = 'other'"""
 
+    get_cats: str = """SELECT id, cat_name FROM categories where cat_type = %s"""
+
+    get_sla: str = """SELECT sla from categories where id = %s"""
+
 
 @dataclass(frozen=True)
 class BitrixQueries:

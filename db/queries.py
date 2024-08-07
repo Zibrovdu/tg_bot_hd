@@ -34,7 +34,7 @@ class Queries:
 
     get_user_cat: str = """SELECT category FROM users WHERE user_id = %s"""
 
-    get_vote_info: str = """SELECT m.vote, concat(u.bitrix_user_last_name, ' ', u.bitrix_user_name), m.comment 
+    get_vote_info: str = """SELECT m.vote, CONCAT(u.bitrix_user_last_name, ' ', u.bitrix_user_name), m.comment 
     FROM marks m LEFT JOIN  users u ON m.user_id = u.user_id"""
 
     set_page: str = """UPDATE users SET page_num = %s where user_id = %s"""
@@ -47,15 +47,8 @@ class Queries:
 
     get_sla: str = """SELECT sla from categories where id = %s"""
 
+    get_phones: str = """SELECT bd.buid, bd.last_name, bd.name, bd.mobile FROM bitrix_data bd"""
 
-@dataclass(frozen=True)
-class BitrixQueries:
-    get_phones: str = """SELECT bu.ID AS uid, bu.LAST_NAME AS last_name, bu.NAME AS name, bu.PERSONAL_MOBILE AS phone  
-    FROM b_user bu"""
+    get_tg: str = """SELECT bd.buid, bd.tg_name FROM bitrix_data bd WHERE bd.tg_name IS NOT NULL"""
 
-    get_name: str = """select bu.last_name, bu.name from b_user bu where bu.id = %s"""
-
-    get_tg: str = """SELECT buu.VALUE_ID, buu.UF_USR_1658229353407 FROM b_uts_user buu 
-    WHERE buu.UF_USR_1658229353407 IS NOT NULL"""
-
-    check_user: str = """select bu.active from b_user bu where bu.id = %s"""
+    get_name: str = """select bd.last_name, bd.name from bitrix_data bd where bd.buid = %s"""

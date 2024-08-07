@@ -22,3 +22,6 @@ router = Router()
 @router.message()
 async def undefined_msg(message: Message):
     await message.answer(text=LEXICON.get('undefined'))
+
+
+

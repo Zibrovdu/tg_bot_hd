@@ -127,7 +127,9 @@ LEXICON = {
 }
 
 msg_menu = ['edit_msg', 'set_task', 'cancel_task']  # 'attach_file',
+
 ynbtns = ['user_happy', 'user_unhappy']
+
 pag_btns = {
     'forward': '>>',
     'backward': '<<',
@@ -182,7 +184,7 @@ additions = {
 }
 
 MENU_COMMANDS = {
-    '/start': 'Запуск бота',
+    '/start': 'Создать обращение',
     '/cancel': 'Прервать создание обращения',
     '/help': 'Справка по работе бота'
 }

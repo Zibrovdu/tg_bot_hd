@@ -1,6 +1,6 @@
 import MySQLdb
 import MySQLdb.converters
-from db.queries import Queries, BitrixQueries
+from db.queries import Queries
 
 
 class CustomList(list):
@@ -136,33 +136,19 @@ class MySqlDb:
         cat_id = self.database_client.execute_select_command(Queries.get_cat_id, (user_id,))
         return cat_id[0][0]
 
-
-class BitrixDb:
-    def __init__(self, database_client: Connection):
-        self.database_client = database_client
-
     def get_phones(self):
-        phones = self.database_client.execute_select_command(BitrixQueries.get_phones, ())
+        phones = self.database_client.execute_select_command(Queries.get_phones, ())
         return phones
 
-    def get_user_name(self, buid: int):
-        user = self.database_client.execute_select_command(BitrixQueries.get_name, (buid,))
-        return user
-
     def get_tg(self):
-        tg = self.database_client.execute_select_command(BitrixQueries.get_tg, ())
+        tg = self.database_client.execute_select_command(Queries.get_tg, ())
         return tg
 
-    def check_user(self, buid: int):
-        check_user = self.database_client.execute_select_command(BitrixQueries.check_user, (buid,))
-        return check_user
+    def get_user_name(self, buid: int):
+        user = self.database_client.execute_select_command(Queries.get_name, (buid,))
+        return user
 
 
 def load_db(mysql_conn):
     db = MySqlDb(Connection(mysql_conn))
-    return db
-
-
-def load_bitrix_db(b_conn):
-    db = BitrixDb(Connection(b_conn))
     return db

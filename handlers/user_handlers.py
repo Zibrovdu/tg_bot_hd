@@ -8,8 +8,8 @@ from aiogram.fsm.state import default_state
 from aiogram.types import Message, FSInputFile, CallbackQuery, ReplyKeyboardRemove
 
 from db.mysql_db import load_db
-from external_services.bitrix import (id_by_phone, set_bitrix_task, id_by_tg, get_user_name, user_check,
-                                      search_user_by_phone)
+from external_services.bitrix import (id_by_phone, set_bitrix_task, id_by_tg, search_user_by_phone, check_user_active,
+                                      get_user_name)
 from filters.filters import (IsChoseCat, IsPressedBackBtn, IsEditMessage, IsSetTask, IsCancelTask, IsUserHappy,
                              IsUserUnHappy, IsUserContact, IsChoosePerson)
 from keyboards.kbs import create_ask_phone, category_menu, other_menu, link_buttons
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Этот хендлер срабатывает на команду start вне машины состояний и предлагает пользователю поделиться номером телефона
 @router.message(CommandStart(), StateFilter(default_state))
-async def start(message: Message, db_conn, state: FSMContext, bitrix_conn):
+async def start(message: Message, db_conn, state: FSMContext, url_hook):
     logger.info('User send start command')
     db = load_db(db_conn)
     photo = FSInputFile('assets/it_block.jpg', 'it_block')
@@ -37,12 +37,12 @@ async def start(message: Message, db_conn, state: FSMContext, bitrix_conn):
             chat_id=message.chat.id
         )
         user = db.get_user(user_id=str(message.from_user.id))
-    buid = id_by_tg(tg_name=message.from_user.username, mysql_conn=bitrix_conn)[0]
+    buid = id_by_tg(tg_name=message.from_user.username, mysql_conn=db_conn)[0]
 
     if user[1] or buid > 0:
         if user[1]:
             buid = user[1]
-        b_user_name, b_user_last_name = get_user_name(mysql_conn=bitrix_conn, buid=buid)[0]
+        b_user_name, b_user_last_name = get_user_name(mysql_conn=db_conn, buid=buid)[0]
 
         db.save_bitrix_data(
             user_id=message.from_user.id,
@@ -51,7 +51,7 @@ async def start(message: Message, db_conn, state: FSMContext, bitrix_conn):
             b_user_last_name=b_user_last_name
         )
         # проверяем активность учетной записи пользователя
-        if not user_check(buid=buid, mysql_conn=bitrix_conn):
+        if not check_user_active(buid, url_hook):
             await message.answer(LEXICON.get('not_active'))
             await state.clear()
         else:
@@ -104,36 +104,38 @@ async def process_cancel_command_state(message: Message, state: FSMContext, bot:
 
 # Пользователь отправил боту свой номер телефона
 @router.message(F.contact, StateFilter(FSMFillForm.fill_phone), IsUserContact())
-async def user_entering_phone(message: Message, db_conn, state: FSMContext, bitrix_conn, url_hook):
+async def user_entering_phone(message: Message, db_conn, state: FSMContext, url_hook):
     db = load_db(db_conn)
     photo_profile = FSInputFile('assets/profile_wo_phone.jpg', 'profile_wo_phone.jpg')
+    photo_hd_bitrix = FSInputFile('assets/bitrix_hd.jpg', 'bitrix_hd.jpg')
     logger.info('User send his contact')
 
     db.save_phone(user_id=message.from_user.id, phone=int(message.contact.phone_number))
 
     # Получаем ид пользователя в Битрикс по номеру телефона
-    bitrix_user_id, bitrix_user_last_name, bitrix_user_name = id_by_phone(bitrix_conn, message.contact.phone_number)
+    buid, bitrix_user_last_name, bitrix_user_name = id_by_phone(db_conn, message.contact.phone_number)
+    print(buid)
 
-    if bitrix_user_id == 0:
-        _, bitrix_user_id, bitrix_user_last_name, bitrix_user_name = search_user_by_phone(message.contact.phone_number,
-                                                                                          url_hook)
+    if buid == 0:
+        _, buid, bitrix_user_last_name, bitrix_user_name = search_user_by_phone(message.contact.phone_number,
+                                                                                url_hook)
 
-    if bitrix_user_id == 9999999:
+    if buid == 9999999:
         await message.answer(text=LEXICON.get('too_many_users'), reply_markup=ReplyKeyboardRemove())
-        await message.answer_photo(photo_profile)
+        await message.answer_photo(photo_hd_bitrix)
         await state.clear()
 
-    elif bitrix_user_id != 0:
+    elif buid != 0:
 
         # Пользователь найден
         db.save_bitrix_data(
             user_id=message.from_user.id,
-            b_uid=int(bitrix_user_id),
+            b_uid=int(buid),
             b_user_name=bitrix_user_name,
             b_user_last_name=bitrix_user_last_name
         )
         # проверяем активность учетной записи пользователя
-        if not user_check(buid=bitrix_user_id, mysql_conn=bitrix_conn):
+        if not check_user_active(buid, url_hook):
             await message.answer(LEXICON.get('not_active'))
             await state.clear()
         else:
@@ -169,7 +171,7 @@ async def process_help_command(message: Message):
     await message.answer(LEXICON.get('/help'))
 
 
-# Хендлер сработает если пользователь отправит команду старт в любых других слкчаях кром описанных выше.
+# Хендлер сработает если пользователь отправит команду старт в любых других слкчаях кроме описанных выше.
 @router.message(CommandStart(), ~StateFilter(default_state))
 async def start_in_fsm(message: Message):
     await message.answer(text=LEXICON.get('in_progress'))
@@ -198,7 +200,7 @@ async def choose_category(callback: CallbackQuery, db_conn, state: FSMContext, b
     if not cat_list:
         return await callback.message.answer(text='Get error when read category from DB')
     # cat_id = db.get_cat_id(callback.from_user.id)
-    sla = db.get_sla(db.get_cat_id(callback.from_user.id))
+    # sla = db.get_sla(db.get_cat_id(callback.from_user.id))
 
     add_text = ''
     if additions.get(''.join(['tech_sup_', callback.data])):
@@ -309,7 +311,7 @@ async def set_task(callback: CallbackQuery, db_conn, state: FSMContext, url_hook
         await state.update_data(msg_id=msg.message_id)
 
     await callback.message.answer(text=LEXICON.get('task_send').format(task_id, b_uid, task_id))
-    logger.info(f'Task set successfully. ID: {task_id}, Creater: {" ".join(user)}, Creater id: {b_uid}')
+    logger.info(f'Task set successfully. ID: {task_id}, Creator: {" ".join(user)}, Creator id: {b_uid}')
 
     db.log_tasks(user_id=callback.from_user.id, bitrix_id=b_uid, task_id=task_id, task_date=task_date)
     logger.info('Stored data in db')
